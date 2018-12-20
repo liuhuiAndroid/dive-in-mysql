@@ -5,6 +5,13 @@
 # 一、安装Percona数据库
 
 ## 1. 离线安装Percona
+* 下载rpm
+
+  https://www.percona.com/software/mysql-database/percona-server 
+  
+  Download Percona Server 5.7. Version:Percona Server for MySQL 5.7.22-22 Software:CentOS
+  
+  单独下载:jemalloc-3.6.0-8.el7.centos.x86_64.rpm
 
 * 进入RPM安装文件目录，执行下面的脚本
 
@@ -26,7 +33,7 @@
 
   ```shell
   yum install http://www.percona.com/downloads/percona-release/redhat/0.1-3/percona-release-0.1-3.noarch.rpm
-  yum  install  Percona-Server-server-57
+  yum install Percona-Server-server-57
   ```
 
 * 管理MySQL服务
@@ -62,11 +69,12 @@ skip-name-resolve
 service mysql restart 
 ```
 
-## 5. 禁止开机启动MySQL
+## 5. 禁止开机启动MySQL(重要)
 
 ```shell
 chkconfig mysqld off
 ```
+长时间宕机的正确做法是：从其他节点拷贝数据文件到当前节点，然后再启动数据库
 
 ## 6. 初始化MySQL数据库
 
@@ -76,7 +84,7 @@ chkconfig mysqld off
   cat /var/log/mysqld.log | grep "A temporary password"
   ```
 
-* 修改MySQL密码
+* 修改MySQL密码:Qwer1234#*.
 
   ```shell
   mysql_secure_installation
@@ -93,9 +101,22 @@ chkconfig mysqld off
   GRANT all privileges ON *.* TO 'admin'@'%';
   FLUSH PRIVILEGES;
   ```
+  
+* 重设root账户密码
 
-
-
+  ```shell
+  vi /etc/my.cnf
+  添加参数 skip-grant-tables
+  service mysqld restart
+  mysql
+  USE mysql;
+  UPDATE user SET password = password('new-password') WHERE user = 'root';
+  FLUSH PRIVILEGES;
+  vi /etc/my.cnf
+  删除参数 skip-grant-tables
+  service mysql restart
+  ```
+  
 # 二、创建PXC集群
 
 ## 1. 删除MariaDB程序包
@@ -1072,13 +1093,3 @@ CREATE TABLE t_purchase (
   ```shell
   pt-archiver --source h=192.168.99.102,P=8066,u=admin,p=Abc_123456,D=test,t=t_purchase --dest h=192.168.99.102,P=3306,u=admin,p=Abc_123456,D=test,t=t_purchase --no-check-charset --where 'purchase_date<"2018-09"' --progress 5000 --bulk-delete --bulk-insert --limit=10000 --statistics
   ```
-
-  
-
-
-
-
-
-
-
-
