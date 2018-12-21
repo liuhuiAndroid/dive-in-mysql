@@ -57,7 +57,9 @@ vi /etc/my.cnf
 
 ```ini
 [mysqld]
+#数据库字符集
 character_set_server = utf8
+#允许远程访问的IP地址
 bind-address = 0.0.0.0
 #跳过DNS解析
 skip-name-resolve
@@ -125,6 +127,14 @@ yum -y remove mari*
 
 ## 2. 开放防火墙端口
 
+3306：MySQL服务端口
+
+4444：请求全量同步端口
+
+4567：数据库节点之间通信端口
+
+4568：请求增量同步端口
+
 ```shell
 firewall-cmd --zone=public --add-port=3306/tcp --permanent
 firewall-cmd --zone=public --add-port=4444/tcp --permanent
@@ -145,7 +155,26 @@ vi /etc/selinux/config
 reboot
 ```
 
+## 4. 在线安装PXC
+
+```shell
+yum install http://www.percona.com/downloads/percona-release/redhat/0.1-3/percona-release-0.1-3.noarch.rpm
+yum install Percona-XtraDB-Cluster-57
+```
+
+
+
 ## 4. 离线安装PXC
+
+- 下载PXC程序包
+
+  下载地址：https://www.percona.com/software/mysql-database/percona-xtradb-cluster
+
+  Download Percona XtraDB Cluster 5.7
+
+  Version:Percona XtraDB Cluster 5.7.21-29.26 Software:CentOS 188.3 MB
+
+  单独下载:qpress-11-1.el7.x86_64
 
 * 进入RPM文件目录，执行安装命令
 
