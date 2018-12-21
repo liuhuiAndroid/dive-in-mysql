@@ -1,7 +1,5 @@
 [TOC]
 
-
-
 # 一、安装Percona数据库
 
 ## 1. 离线安装Percona
@@ -133,6 +131,7 @@ firewall-cmd --zone=public --add-port=4444/tcp --permanent
 firewall-cmd --zone=public --add-port=4567/tcp --permanent
 firewall-cmd --zone=public --add-port=4568/tcp --permanent
 ```
+注意云服务器安全组需要开放端口
 
 ## 3. 关闭SELINUX
 
@@ -188,6 +187,8 @@ reboot
 * 非主节点的管理命令（非第一个启动的PXC节点）
 
   ```shell
+  systemctl stop mysql@bootstrap.service # 实际操作发现需要先执行此命令
+  
   service start mysql
   service stop mysql
   service restart mysql
@@ -244,8 +245,6 @@ reboot
       UNIQUE INDEX unq_username(username) USING BTREE
   );
   ```
-
-
 
 ## 3. MyCat安装与配置
 
@@ -308,8 +307,6 @@ reboot
      	</user>
    </mycat:server>
    ```
-
-   
 
 8. 修改schema.xml文件，设置数据库连接和虚拟数据表
 
