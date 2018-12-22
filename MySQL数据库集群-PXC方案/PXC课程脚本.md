@@ -199,6 +199,7 @@ yum install Percona-XtraDB-Cluster-57
   wsrep_node_address=192.168.99.151  #当前节点的IP
   wsrep_sst_method=xtrabackup-v2  #同步方法（mysqldump、rsync、xtrabackup）
   wsrep_sst_auth= admin:Abc_123456  #同步使用的帐户
+  wsrep_slave_threads=16 #本地执行队列的线程数量，cpu线程数量的1-1.5倍
   pxc_strict_mode=ENFORCING  #同步严厉模式
   binlog_format=ROW  #基于ROW复制（安全可靠）
   default_storage_engine=InnoDB  #默认引擎

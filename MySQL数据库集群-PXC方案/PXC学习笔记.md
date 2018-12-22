@@ -60,9 +60,146 @@ CentOS捆绑了mariadb-libs，所以必须先卸载
 创建PXC集群步骤见课程脚本
 
 ## 3. PXC集群的常用管理-数据库集群使用
+
+#### PXC集群信息可以分为以下几类：
+
+[队列 复制 流控 事务 状态](https://www.percona.com/doc/percona-xtradb-cluster/LATEST/wsrep-status-index.html)
+
+```mysql
+show status like 'wsrep%';
+show status like '%queue%';
+```
+
+wsrep_replicated：被其他节点复制的总数
+
+wsrep_replicated_bytes：被其他节点复制的数据总数
+
+wsrep_received：从其他节点处收到的写入请求总数
+
+wsrep_received_bytes：从其他节点处收到的同步数据总数
+
+wsrep_last_applied：同步应用次数
+
+wsrep_last_committed：事务提交次数
+
+#### 队列的相关信息
+
+wsrep_local_send_queue：发送队列的长度
+
+wsrep_local_send_queue_max：发送队列的最大长度
+
+wsrep_local_send_queue_min：发送队列的最小长度
+
+wsrep_local_send_queue_avg：发送队列的平均长度
+
+wsrep_local_recv_queue：接收队列的长度
+
+wsrep_local_recv_queue_max：接收队列的最大长度
+
+wsrep_local_recv_queue_min：接收队列的最小长度
+
+wsrep_local_recv_queue_avg：接收队列的平均长度
+
+#### 流量控制的相关信息
+
+添加空节点，全量同步数据太多，导致集群限速，结果很严重
+
+wsrep_flow_control_paused_ns：流控暂停状态下花费的总时间（纳秒）
+
+wsrep_flow_control_paused：流量控制暂停时间的占比（0~1）
+
+wsrep_flow_control_sent：发送的流控暂停事件的数量
+
+wsrep_flow_control_recv：接收的流控暂停事件的数量
+
+wsrep_flow_control_interval：流量控制的下限和上限，上限是队列中允许的最大请求数。如果队列达到上限，则拒绝新的请求。当处理现有请求时，队列会减少，一旦达到下限，将再次允许新的请求
+
+wsrep_flow_control_interval_low：流量控制的下限
+
+wsrep_flow_control_interval_high：流量控制的上限
+
+wsrep_flow_control_status：流量控制状态
+
 ## 4. PXC集群的常用管理-状态参数
+
+#### PXC节点状态
+
+OPEN PRIMARY JOINER JOINED SYNCED DONER 
+
+#### PXC集群状态
+
+PRIMARY DISCONNECTED NON_PRIMARY
+
+#### 节点与集群的相关信息
+
+wsrep_local_state_comment：节点状态
+
+wsrep_cluster_status：集群状态
+
+wsrep_connected：节点是否连接到集群
+
+wsrep_ready：集群是否正常工作
+
+wsrep_cluster_size：节点数量
+
+wsrep_desync_count：延时节点数量
+
+wsrep_incoming_addresses：集群节点IP地址
+
+#### 事务的相关信息
+
+wsrep_cert_deps_distance：事务执行并发数
+
+wsrep_apply_oooe：接收队列中事务的占比
+
+wsrep_apply_oool：接收队列中事务乱序执行的频率
+
+wsrep_apply_window：接收队列中事务的平均数量
+
+wsrep_commit_oooe：发送队列中事务的占比
+
+wsrep_commit_oool：无任何意义（不存在本地乱序提交）
+
+wsrep_commit_window：发送队列中事务的平均数量
+
 ## 5. PXC节点的上线与关闭
+
+#### PXC节点的安全下线操作
+
+节点怎么启动的，就使用对应的命令去关闭
+
+#### PXC节点的意外下线操作
+
+宕机、挂机、关机、重启、断电、断网都会让节点意外下线
+
+#### PXC节点上线造作
+
+如果PXC节点都是安全退出的，先要重启最后退出的节点
+
+如果PXC节点都是意外退出的，我们需要修改配置文件，挑选一个节点作为主节点
+
+如果集群中还有可运行的节点，其他节点按照普通节点上线即可
+
 ## 6. MySQL集群中间件比较
+
+#### PXC集群需要负载均衡、读写分离、数据切分等功能，需要一个软件能实现这些功能
+
+负载均衡中间件：Haproxy、MySQL-Proxy
+
+负载均衡提供了请求转发，降低了单节点的负载
+
+数据切分中间件：**MyCat**、Atlas、OneProxy、ProxySQL
+
+按照不同的路由算法分发SQL语句就形成了数据切分
+
+可以把一个集群当作一个分片，通过数据切分让多个集群共同管理数据
+
+热数据保存到分片中，冷数据从分片中移除，加入归档库
+
+书籍：《MyCat权威指南》《分布式数据库架构及企业实践—基于MyCat中间件》
+
+这里使用**MyCat**来管理PXC集群
+
 ## 7. 配置MyCat负载均衡
 ## 8. 数据切分
 ## 9. 父子表
