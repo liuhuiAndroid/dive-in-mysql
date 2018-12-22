@@ -293,6 +293,10 @@ yum install Percona-XtraDB-Cluster-57
 
 4. 开放防火墙8066和9066端口，关闭SELINUX
 
+   8066：数据服务端口
+
+   9066：管理端口
+
 5. 修改MyCat的bin目录中所有.sh文件的权限
 
    ```
@@ -308,7 +312,15 @@ yum install Percona-XtraDB-Cluster-57
    kill -9 MyCat进程编号
    ```
 
-7. 修改server.xml文件，设置MyCat帐户和虚拟逻辑库
+7. 编辑MyCat配置文件
+
+   | 文件       |                                       作用 |                 修改内容                 |
+   | ---------- | -----------------------------------------: | :--------------------------------------: |
+   | rule.xml   |                                   切分算法 |         修改mod-long分片数量为2          |
+   | server.xml |                                  虚拟MySQL |         修改用户名、密码和逻辑库         |
+   | schema.xml | 数据库连接、读写分离、负载均衡、数据表映射 | 定义连接、读写分离、负载均衡、数据表映射 |
+
+8. 修改server.xml文件，设置MyCat帐户和虚拟逻辑库
 
    ```shell
    <?xml version="1.0" encoding="UTF-8"?>
@@ -335,10 +347,16 @@ yum install Percona-XtraDB-Cluster-57
      		<property name="password">Abc_123456</property>
      		<property name="schemas">test</property>
      	</user>
+     	<!--配置只读用户-->
+     	<user name="user">
+     		<property name="password">user</property>
+     		<property name="schemas">test</property>
+     		<property name="readOnly">true</property>
+     	</user>
    </mycat:server>
    ```
 
-8. 修改schema.xml文件，设置数据库连接和虚拟数据表
+9. 修改schema.xml文件，设置数据库连接和虚拟数据表
 
    ```shell
    <?xml version="1.0"?>
@@ -355,9 +373,12 @@ yum install Percona-XtraDB-Cluster-57
      	<dataHost name="cluster1" maxCon="1000" minCon="10" balance="2" 
                    writeType="1" dbType="mysql" dbDriver="native" switchType="1"  
                    slaveThreshold="100">
+           <!--心跳检测-->   
      		<heartbeat>select user()</heartbeat>
+     		<!--写节点--> 
      		<writeHost host="W1" url="192.168.99.151:3306" user="admin" 
                         password="Abc_123456">
+     		    <!--读节点--> 
      			<readHost host="W1R1" url="192.168.99.159:3306" user="admin" 
                            password="Abc_123456" />
      			<readHost host="W1R2" url="192.168.99.215:3306" user="admin" 
@@ -393,7 +414,7 @@ yum install Percona-XtraDB-Cluster-57
    </mycat:schema>
    ```
 
-9. 修改rule.xml文件，把mod-long的count值修改成2
+10. 修改rule.xml文件，把mod-long的count值修改成2
 
    ```shell
    <function name="mod-long" class="io.mycat.route.function.PartitionByMod">
@@ -401,9 +422,9 @@ yum install Percona-XtraDB-Cluster-57
    </function>
    ```
 
-10. 重启MyCat
+11. 重启MyCat
 
-11. 向t_user表写入数据，感受数据的切分
+12. 向t_user表写入数据，感受数据的切分
 
     ```mysql
     USE test;
@@ -411,6 +432,8 @@ yum install Percona-XtraDB-Cluster-57
     INSERT INTO t_user(id,username,password,tel,locked) VALUES(1,"A",HEX(AES_ENCRYPT('123456','HelloWorld')));
     #第二条记录被切分到第一个分片
     INSERT INTO t_user(id,username,password,tel,locked) VALUES(2,"B",HEX(AES_ENCRYPT('123456','HelloWorld')));
+    #查看数据
+    select * from t_user;
     ```
 
 ## 4. 配置父子表
@@ -455,6 +478,10 @@ yum install Percona-XtraDB-Cluster-57
 
 4. 在MyCat上执行如下SQL：
 
+   MyCat默认端口：9066
+
+   MyCat热加载：`reload @@config_all;`
+
    ```mysql
    USE test;
    CREATE TABLE t_customer(
@@ -470,6 +497,12 @@ yum install Percona-XtraDB-Cluster-57
    ```
 
 5. 向t_customer表和t_orders表写入数据，查看字表数据跟随父表切分到同一个分片
+
+   ```mysql
+   select * from t_customer;
+   select * from t_customer c inner join t_orders o on c.id=o.customer_id;
+   ```
+
 
 ## 5. 创建双机热备的MyCat集群
 
