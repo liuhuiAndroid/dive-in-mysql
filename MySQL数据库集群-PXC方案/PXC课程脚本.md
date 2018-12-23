@@ -510,6 +510,12 @@ yum install Percona-XtraDB-Cluster-57
 
 2. 用一个虚拟机实例部署Haproxy
 
+   * 开放防火墙端口，关闭SELINUX
+
+     3306：TCP/IP转发端口
+
+     4001：监控界面端口
+
    * 安装Haproxy
 
      ```shell
@@ -522,7 +528,7 @@ yum install Percona-XtraDB-Cluster-57
      vi /etc/haproxy/haproxy.cfg
      ```
 
-     ```
+     ```shell
      global
          log         127.0.0.1 local2
          chroot      /var/lib/haproxy
@@ -568,7 +574,7 @@ yum install Percona-XtraDB-Cluster-57
          option  tcpka        #使用keepalive检测死链
      ```
 
-   * 启动Haproxy
+   *  启动Haproxy
 
      ```shell
      service haproxy start
@@ -603,7 +609,7 @@ yum install Percona-XtraDB-Cluster-57
      vim /etc/keepalived/keepalived.conf
      ```
 
-     ```
+     ```shell
      vrrp_instance  VI_1 {
          state  MASTER
          interface  ens33
@@ -635,6 +641,16 @@ yum install Percona-XtraDB-Cluster-57
 # 四、Sysbench基准测试 
 
 ## 1. 安装Sysbench
+
+* 设置yum源
+
+  ```shell
+  http://mirrors.aliyun.com/repo/Centos-7.repo
+  http://mirrirs.163.com/.help/CentOS7-Base-163.repo
+  放在/etc/yum.repos.d目录中，把文件改名为CentOS-Base.repo
+  yum clean all
+  yum makecache
+  ```
 
 * 在线安装
 
@@ -736,10 +752,12 @@ yum install Percona-XtraDB-Cluster-57
 
 * 执行`create_table.sql`和`add_fkey_idx.sql`两个文件
 
+  tpcc逻辑库执行sql
+
 * 执行数据初始化
 
   ```shell
-  ./tpcc_load -h 192.168.99.131 -d tpcc -u admin -p Abc_123456 -w
+  ./tpcc_load -h 192.168.99.131 -d tpcc -u admin -p Abc_123456 -w 1
   ```
 
 * 执行压力测试

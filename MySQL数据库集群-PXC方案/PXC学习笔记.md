@@ -230,7 +230,52 @@ wsrep_commit_window：发送队列中事务的平均数量
 MyCat提出了父子表这种解决方案
 
 ## 10. 组建双机热备的MyCat集群-构建高可用的MyCat集群
-## 11. 组建双机热备的MyCat集群-利用keepalived抢占虚拟IP
-## 12. Sysbench基准测试-安装Sysbench
-## 13. Sysbench基准测试-使用Sysbench
+
+MySQL要大量集群，MyCat要少量集群，Haproxy不需要集群
+
+创建双机热备的MyCat集群
+
+利用keepalived抢占虚拟IP
+
+## 12. Sysbench基准测试-安装使用Sysbench
+
+基准测试时针对系统的一种压力测试，但基准测试不关心业务逻辑，更加简单、直接、易于测试，不要求真实
+
+QPS：每秒钟处理完成请求的次数
+
+TPS：每秒钟执行完的事务次数
+
+响应时间：一次请求所需要的平均处理时间
+
+并发量：系统能同时处理的请求数
+
+常见的基准测试工具：Mysqlslap、Sysbench、Jmeter
+
+Sysbench可以进行：线程测试、CPU测试、内存测试、磁盘测试、数据库测试
+
+安装Sysbench
+
+执行测试
+
+测试数据表建议不低于10个，单表数据量不低于500万行。如果是配备了SSD或者PCIE SSD的话，则建议单表数据量最少不低于1亿行
+
 ## 14. tpcc-mysql压力测试
+
+tpcc-mysql是percona基于tpcc规范衍生出来的产品，专用于mysql压力测试
+
+# 三、PXC集群原理
+
+## 1. binlog日志
+
+## 2. PXC同步原理
+
+# 四、业务需求与MySQL架构设计
+
+## 1. MySQL的5种特殊架构设计
+
+## 2. 数据库设计原则
+
+# 五、数据库常见业务处理
+
+## 1. 向集群导入大量数据-了解Xtend基本语法
+
