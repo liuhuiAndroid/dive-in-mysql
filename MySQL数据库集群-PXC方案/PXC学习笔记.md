@@ -267,7 +267,69 @@ tpcc-mysql是percona基于tpcc规范衍生出来的产品，专用于mysql压力
 
 ## 1. binlog日志
 
+两种文件：日志文件、索引文件
+
+日志文件：mysql_bin.000001、mysql_bin.000002
+
+索引文件：mysql_bin.index
+
+```mysql
+[mysqld]
+port=3306
+binlog_format=row
+log_bin=mysql_bin
+```
+
+阅读binlog文件
+
+```sql
+show master logs;
+show binlog events in 'localhost-bin.000009';
+```
+
+三种模式：statement、row、mixed
+
+row模式：每条记录的变化都会写到日志中
+
+row模式优点：清晰的记录了每条记录的细节、数据同步安全可靠、同步时出现行锁的更少
+
+row模式缺点：日志体积太大，浪费存储空间、数据同步频繁速度慢
+
+statement模式：每条会修改数据的sql语句会记录到binlog中
+
+statement模式优点：日志文件体积小、节省I/O和存储资源、集群节点同步速度快
+
+statement模式缺点：某些函数和主键自增长会出现同步数据不一致
+
+mixed模式：普通操作使用statement模式，同步会出现问题的操作选择row模式
+
+PXC节点默认的日志模式：binlog_format=row
+
 ## 2. PXC同步原理
+
+GTID（全局事务ID）= server_uuid + transaction_id
+
+```sql
+show status like "%uuid%";
+wsrep_local_state_uuid 集群uuid
+```
+
+```sql
+show binlog events in 'localhost-bin.000004';
+xid 就是 transaction_id
+```
+
+查询最后提交的事务ID
+
+```sql
+show status like "%wsrep_last_committed%";
+```
+
+这里应该有一张PXC同步原理图... 
+
+锁冲突案例演示，需要使用MyCat全局主键
+
+replication集群master数据写入直接写入日志，slave定期读取日志执行，容易数据不一致
 
 # 四、业务需求与MySQL架构设计
 
