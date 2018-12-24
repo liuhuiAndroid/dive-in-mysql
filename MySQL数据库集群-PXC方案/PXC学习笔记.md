@@ -644,21 +644,366 @@ pt-archiver的用途：
 
 ## 11. 数据分区-认识表分区
 
+#### 什么是表分区
+
+#### 表分区有什么好处？
+
+1. 表分区的数据可以分布在不同的物理设备上，从而高效地利用多个硬件设备
+2. 单表可以存储更多的数据
+3. 数据写入和读取的效率提升了，汇总函数计算速度变快了
+4. 不会出现表锁，只会锁住相关分区
+5. 数据分区不是无限的，每张数据表最多可以有1024个分区
+
+#### 表分区有什么缺点？
+
+1. 不支持存储过程、存储函数和某些特殊函数
+2. 不支持按位运算符
+3. 分区键不能子查询
+4. 创建分区后，尽量不要修改数据库模式
+
+#### 为什么要在集群中引入表分区？
+
+表分区比分片的成本低很多，当热数据太多的情况下，优先考虑使用表分区
+
+#### 挂载硬盘
+
+可以在A PXC节点和B PXC节点都挂载3块2G SCSI硬盘
+
+```shell
+fdisk -l # 查看主机硬盘信息
+fdisk /dev/sdb # 输入n创建新分区
+n：创建新分区
+d：删除分区
+p：列出分区表
+w：把分区表写入硬盘并退出
+q：退出而不保存
+
+mkfs -t ext4 /dev/sdb1 # 格式化分区
+vi /etc/fstab # 永久挂载
+/dev/sdb1 /mnt/p0 ext4 defaults 0 0
+
+reboot # 重启生效
+cd /mnt/p0
+mkdir data
+chown -R mysql:mysql /mnt/p0/data # 给数据目录分配用户
+```
+
+#### PXC节点使用表分区
+
+PXC同步模式只能是PERMISSIVE或者DISABLED，修改my.cnf
+
+```mysql
+pxc_strict_mode = PERMISSIVE | DISABLED
+```
+
+#### 表分区类型
+
+RANGE分区：根据连续区间值切分数据
+
+LIST分区：根据枚举值切分数据
+
+HASH分区：对整数求模切分数据
+
+KEY分区：对任何数据类型求模切分数据
+
 ## 12. 数据分区-Range分区
+
+主键范围切分，很少使用
+
+```mysql
+create table t_range_1(
+	id int unsigned primary key,
+	name varchar(200) not null
+)
+pritition by range(id)(
+	partition p0 values less than(10000000),
+	partition p1 values less than(20000000),
+	partition p2 values less than(30000000),
+	partition p3 values less than(40000000)
+)
+```
+
+按日期范围切分
+
+```mysql
+create table t_range_2(
+	id int unsigned ,
+	name varchar(200) not null,
+    birthday date not null,
+    primary key(id,birthday) # 复合主键
+)
+pritition by range(month(birthday))(
+	partition p0 values less than(3),
+	partition p1 values less than(6),
+	partition p2 values less than(9),
+	partition p3 values less than(12)
+)
+```
+
+把分区映射到特定的硬盘
+
+```mysql
+create table t_range_2(
+	id int unsigned ,
+	name varchar(200) not null,
+    birthday date not null,
+    primary key(id,birthday) # 复合主键
+)
+pritition by range(month(birthday))(
+	partition p0 values less than(6) data directory = "/mnt/p0/data",
+	partition p1 values less than(12) data directory = "/mnt/p1/data"
+)
+```
+
+```shell
+cd /mnt/p0/data
+cd test
+ls
+cd /mnt/p1/data
+cd test
+ls
+```
+
+查看每个分区保存了哪些数据
+
+```mysql
+select partition_name,partition_method,partition_expression,partition_description,
+table_rows,subpartition_name,subpartition_method,subpartition_expression
+from infomation_schema.partitions
+where table_schema = schema()
+and table_name = 't_range_2';
+```
+
+配置mycat的schema.xml中的t_range_2的配置
+
+测试mycat和表分区完美结合在一起
 
 ## 13. 数据分区-LIST分区
 
+```mysql
+create table t_list_1(
+	id int unsigned,
+	name varchar(200) not null,
+	province_id int unsigned not null,
+	primary key(id,province_id) # 复合主键
+)
+pritition by list(province_id)(
+	partition p0 values in(1,2,3,4) data directory = "/mnt/p0/data",
+	partition p1 values in(5,6,7,8) data directory = "/mnt/p1/data"
+)
+```
+
+配置mycat的schema.xml中的t_list_1的配置
+
+```mysql
+<function name="provice-hash-int"
+	class="io.mycat.route.function.PartitionByFileMap">
+	<property name="mapFile">province-hash-int.txt</property>
+</function>
+
+<tableRule name="sharding-province">
+	<rule>
+		<columns>province_id</columns>
+		<algorithm>province_hash-int</algorithm>
+	</rule>
+</tableRule>
+
+<table name="t_list_1" dataNode="dn1,dn2" rule="sharding-province"/>
+
+vi province_hash-int.txt
+1=0
+2=0
+...
+8=0
+9=1
+...
+16=1
+```
+
+表分区的切分规则与MyCat切分规则可以没有关系
+
 ## 14. 数据分区-Hash分区
+
+hash分区：整数、或者日期、时间戳、字符串、二进制类型运算结果是整数
+
+macat主键求模：整数
+
+```mysql
+create table t_hash_1(
+	id int unsigned primary key,
+	name varchar(200) not null,
+	province_id int unsigned not null
+)
+pritition by hash(id) partitions 2(
+	partition p0 data directory = "/mnt/p0/data",
+	partition p1 data directory = "/mnt/p1/data"
+)
+```
+
+```mysql
+<table name="t_hash_1" dataNode="dn1,dn2" rule="sharding-province"/>
+```
+
+查询分区数据
+
+```mysql
+select partition_name,table_rows
+from information_schema.partitions
+where table_schema=schema() and table_name="t_hash_1";
+```
+
+还可以试验一下非整数字段hash分区
+
+```mysql
+create table t_hash_2(
+	id int not null,
+	name varchar(200) not null,
+    hiredate date not null,
+	primary key(id,hiredate)
+)
+pritition by hash(year(hiredate)) partitions 2(
+	partition p0 data directory = "/mnt/p0/data",
+	partition p1 data directory = "/mnt/p1/data"
+)
+```
+
+```mysql
+<table name="t_hash_2" dataNode="dn1,dn2" rule="sharding-province"/>
+```
+
+hash分区可以对整数，或者函数运算结果是整数的字段做数据切分，保证数据均匀分布
 
 ## 15. 数据分区-Key分区
 
+hash分区：整数、或者日期、时间戳、字符串、二进制类型运算结果是整数
+
+Key分区：整数、或者日期、时间戳、字符串、二进制，是hash分区的加强版
+
+```mysql
+create table t_key_1(
+	id int not null,
+	name varchar(200) not null,
+    job varchar(200) not null,
+	primary key(id,job)
+)
+pritition by key(job) partitions 2(
+	partition p0 data directory = "/mnt/p0/data",
+	partition p1 data directory = "/mnt/p1/data"
+)
+```
+
+```mysql
+<table name="t_key_1" dataNode="dn1,dn2" rule="mod-long"/>
+```
+
+查询分区数据
+
+```mysql
+select partition_name,table_rows
+from information_schema.partitions
+where table_schema=schema() and table_name="t_key_1";
+```
+
+Key分区支持任何数据类型
+
+Key分区创建的时候可以不指定字段，mysql会默认用主键字段（单一主键）
+
 ## 16. 数据分区-管理Range表分区
 
+```mysql
+pritition by range(id)(
+	partition p0 values less than(10000000),
+	partition p1 values less than(20000000),
+	partition p2 values less than(30000000),
+	partition p3 values less than(40000000)
+)
+
+# 添加新分区
+alter table t_range_1 add partition (
+	partition p4 values less than(50000000)
+)
+```
+
+```mysql
+# 在已挂载的硬盘创建2个目录充当2块硬盘
+mkdir -p /home/p0/data
+mkdir -p /home/p1/data
+mkdir -p /home/p2/data
+mkdir -p /home/p3/data
+mkdir -p /home/p4/data
+# 给数据目录分配用户
+chown -R mysql:mysql /home/p0/data 
+chown -R mysql:mysql /home/p1/data
+chown -R mysql:mysql /home/p2/data
+chown -R mysql:mysql /home/p3/data
+chown -R mysql:mysql /home/p4/data
+```
+
+```mysql
+create table t_range_1(
+	id int unsigned primary key,
+	name varchar(200) not null,
+    job varchar(200) not null
+)
+pritition by range(id)(
+	partition p0 values less than(10000000) data directory = "/home/p0/data",
+	partition p1 values less than(20000000) data directory = "/home/p1/data",
+	partition p2 values less than(30000000) data directory = "/home/p2/data",
+	partition p3 values less than(40000000) data directory = "/home/p3/data"
+)
+
+# 添加新分区
+alter table t_range_1 add partition (
+	partition p4 values less than(50000000) data directory = "/home/p4/data"
+)
+
+# 删除表分区,数据会丢失
+alter table t_range_1 drop partition p3,p4;
+
+# 表分区拆分,数据不会丢失
+alter table t_range_1 reorganize partition p0 into (
+	partition s0 values less than(5000000) data directory = "/home/p3/data",
+	partition s1 values less than(10000000) data directory = "/home/p4/data",
+);
+
+# 表分区合并,数据不会丢失
+alter table t_range_1 reorganize partition s0,s1 into (
+	partition p0 values less than(10000000) data directory = "/home/p0/data"
+);
+
+# 移除所有表分区,数据不会丢失
+alter table t_range_1 remove partitioning;
+```
+
 ## 17. 数据分区总结
+
+#### 子分区
+
+子分区就是在已有的分区上再创建分区切分数据
+
+目前只有RANGE和LIST分区可以创建自分区，而且自分区只能是HASH或者KEY分区
+
+```mysql
+create table t_range_3(
+	id int unsigned not null,
+	name varchar(200) not null,
+    province_id int unsigned not null,
+	primary key(id,province_id,name)
+)
+pritition by range(province_id) subpartition by key(name) subpartitions 4(
+	partition p0 values less than(10) data directory = "/home/p0/data",
+	partition p1 values less than(20) data directory = "/home/p1/data",
+    partition p2 values less than maxvalue data directory = "/home/p2/data"
+)
+```
+
+#### 合理的利用表分区与集群分片，降低数据库集群的使用成本
 
 # 六、数据备份与恢复
 
 ## 1. 数据库的冷备份与热备份
+
+
 
 # 备注
 
