@@ -569,9 +569,78 @@ insert ignore into t_user set username = ... and password = hex(aes_encrypt(...,
 
 ## 8. 大数据归档-冷热数据分离
 
+InnoDB写入速度比较慢，数据归档瞬时写入压力对于InnoDB引擎比较大，可以使用TokuDB引擎
+
+TokuDB引擎：
+
+1. 高压缩比，高写入性能
+2. 在线创建索引和字段
+3. 支持事务
+4. 支持主从同步
+
+安装TokuDB
+
+使用TokuDB引擎建表
+
+```mysql
+create table student(
+	...
+)engine = TokuDB;
+```
+
+归档库的双机热备
+
+节省硬件资源PXC集群都只启动一个节点，
+
+MyCat一个节点向虚拟IP发送归档数据，注意修改MyCat配置
+
+###### docker虚拟机方案！！！虚拟机实例共享使用硬件资源
+
 ## 9. 大数据归档-搭建Replication集群
 
+A节点和B节点互为主从关系，实现双向同步
+
+在两个TokuDB数据库上创建用户
+
+修改两个TokuDB的配置文件，开启bin_log日志和relay_log日志
+
+重新启动两个TokuDB节点
+
+配置主从同步：分别在两个TokuDB上执行4句SQL
+
+创建归档表
+
+配置Haproxy+Keepalived双机热备
+
 ## 10. 大数据归档-执行大数据归档
+
+启动一个MyCat节点，两个归档库节点，以及双机热配程序
+
+#### 准备归档数据
+
+在两个PXC分片上创建进货表，采用InnoDB引擎
+
+配置MyCat的schema.xml文件，并重启MyCat，让MyCat接管进货表
+
+#### 执行数据归档
+
+编写Java程序向MyCat写入十万条数据
+
+安装pt-archiver，数据归档工具
+
+pt-archiver的用途：
+
+1. 导入线上数据，到线下数据作处理
+2. 清理过期数据，并把数据归档到本地归档表中，或者远程归档服务器
+
+执行数据归档，自带事务，归档失败数据不会删除
+
+#### 总结
+
+1. 使用TokuDB引擎保存归档数据，拥有高速写入特性
+2. 使用双机热备方案搭建归档库，具备高可用性
+3. 使用pt-archiver执行数据归档，简单易行
+4. 编写Java或Python自动化定时归档程序，归档，发送邮件通知管理员
 
 ## 11. 数据分区-认识表分区
 

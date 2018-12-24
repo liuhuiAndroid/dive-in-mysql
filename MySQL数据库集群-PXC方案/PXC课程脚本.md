@@ -935,19 +935,20 @@ class LoadData {
   echo never > /sys/kernel/mm/transparent_hugepage/defrag
   ```
 
-* 安装TokuDB
+* 安装TokuDB引擎
 
   ```shell
-  yum install -y Percona-Server-tokudb-57.x86_64
-  ps-admin --enable -uroot -p
+  yum install -y Percona-Server-tokudb-57.x86_64 # 注意版本5.7
+  ps-admin --enable -uroot -p # TokuDB引擎安装到mysql上
   service mysql restart
-  ps-admin --enable -uroot -p
+  ps-admin --enable -uroot -p # 激活TokuDB引擎
   ```
 
 * 查看安装结果
 
   ```mysql
-  show engines ;
+  mysql -uroot -p
+  show engines;
   ```
 
 ## 2. 配置Replication集群
@@ -959,11 +960,11 @@ class LoadData {
   ```
 
   ```mysql
-  GRANT super, reload, replication slave ON *.* TO 'backup'@'%' ;
+  GRANT super, reload, replication slave ON *.* TO 'backup'@'%' ; # 分配权限
   ```
 
   ```mysql
-  FLUSH  PRIVILEGES ;
+  FLUSH  PRIVILEGES ; # 更新设置
   ```
 
 * 修改两个TokuDB的配置文件，如下：
@@ -985,7 +986,7 @@ class LoadData {
 
 * 重新启动两个TokuDB节点
 
-* 分别在两个TokuDB上执行下面4句SQL
+* 配置主从同步：分别在两个TokuDB上执行下面4句SQL
 
   ```mysql
   #关闭同步服务
@@ -1014,6 +1015,8 @@ class LoadData {
 ## 3. 创建归档表
 
 ```mysql
+CREATE DATABASE test;
+USE test;
 CREATE TABLE t_purchase (
 	id INT UNSIGNED PRIMARY KEY,
 	purchase_price DECIMAL(10,2) NOT NULL,
@@ -1090,6 +1093,11 @@ CREATE TABLE t_purchase (
 
 * 重启Haproxy
 
+  ```shell
+  service haproxy restart
+  # 访问 192.168.99.102:4001/dbs 查看监控画面
+  ```
+
 * 开启防火墙的VRRP协议
 
   ```shell
@@ -1131,6 +1139,11 @@ CREATE TABLE t_purchase (
 
 * 重启Keepalived
 
+  ```shell
+  service keepalived restart
+  ping 192.168.99.211
+  ```
+
 ## 5. 准备归档数据
 
 * 在两个PXC分片上创建进货表
@@ -1150,15 +1163,21 @@ CREATE TABLE t_purchase (
   )
   ```
 
-* 配置MyCat的schema.xml文件，并重启MyCat
+* 配置MyCat的schema.xml文件，并重启MyCat，让MyCat接管进货表
 
   ```xml
   <table name="t_purchase" dataNode="dn1,dn2" rule="mod-long" />
   ```
 
+  ```shell
+  kill -9 `mycat pid`
+  ./startup_nowrap.sh
+  ```
+
+
 ## 6. 执行数据归档
 
-* 安装pt-archiver
+* 安装pt-archiver，数据归档工具
 
   ```shell
   yum install percona-toolkit
@@ -1166,7 +1185,7 @@ CREATE TABLE t_purchase (
   pt-archiver --help
   ```
 
-* 执行数据归档
+* 执行数据归档，自带事务，归档失败数据不会删除
 
   ```shell
   pt-archiver --source h=192.168.99.102,P=8066,u=admin,p=Abc_123456,D=test,t=t_purchase --dest h=192.168.99.102,P=3306,u=admin,p=Abc_123456,D=test,t=t_purchase --no-check-charset --where 'purchase_date<"2018-09"' --progress 5000 --bulk-delete --bulk-insert --limit=10000 --statistics
