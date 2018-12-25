@@ -1040,9 +1040,127 @@ pritition by range(province_id) subpartition by key(name) subpartitions 4(
 
 ## 2. 联机冷备份-数据表碎片整理
 
+```mysql
+cd /var/lib/mysql
+ls
+cd test 
+ls 
+```
+
+#### auto.cnf文件
+
+每个MySQL都有唯一的UUID，这个值被保存到了auto.cnf文件
+
+数据还原的时候，注意auto.cnf文件
+
+#### grastate.dat文件
+
+grastate.dat文件里保存的是PXC的同步信息
+
+#### gvwstate.dat文件
+
+gvwstate.dat文件里保存的是PXC集群节点的信息
+
+#### 其他文件
+
+err				错误日志文件
+
+pid				进程id文件
+
+ib_buffer_pool	InnoDB缓存文件
+
+ib_logfile		InnoDB事务文件
+
+ibdata			InnoDB共享表空间文件
+
+logbin			日志文件
+
+index			日志索引文件
+
+ibtmp			临时表空间文件
+
+#### 数据文件中的碎片是什么？
+
+向数据表写入数据，数据文件的体积会增大，但是删除数据的时候数据文件体积并不会减小，数据被删除后留下的空白，被称作碎片
+
+数据备份前需要执行碎片整理
+
+#### 整理碎片文件
+
+```mysql
+alter table student engine=InnoDB; # 整理碎片，会锁表
+```
+
+```shell
+vi /etc/my.cnf # 防止碎片整理记录到日志，导致整个集群都进行碎片整理
+#log_bin
+#log_slave_updates
+```
+
 ## 3. 联机冷备份-冷备份PXC节点
 
+```shell
+systemctl stop mysql@bootstrap.service
+vi /etc/my.cnf
+#log_bin
+#log_slave_updates
+#wsrep_... 同步参数也注释掉
+service start mysql
+# 执行碎片整理的Java程序
+service stop mysql # 冷备份需要停止数据库
+```
+
+```shell
+# 冷备份数据目录
+tar -cvf mysql.tar /var/lib/mysql
+# 冷备份表分区
+tar -cvf p0.tar /mnt/p0/data
+tar -cvf p1.tar /mnt/p1/data
+...
+```
+
+#### 冷备份后，节点上线
+
+恢复my.cnf文件中，有关binlog日志，以及PXC同步的相关配置
+
+重新启动PXC节点，加入到PXC集群中
+
+```shell
+vi /etc/my.cnf
+systemctl start mysql@bootstrap.service
+```
+
 ## 4. 联机冷备份-冷还原
+
+#### 还原前的准备工作
+
+如果备份节点存在表分区，那么还原节点必须创建相同的表分区存储空间，并删除MySQL数据目录
+
+停止MySQL服务
+
+```shell
+rm -rf /var/lib/mysql
+```
+
+#### 执行还原
+
+```shell
+tar -xvf mysql.tar
+mv -f var/lib/mysql /var/lib
+rm -rf var
+...
+
+rm /var/lib/mysql/auto.cnf # 删除 mysql uuid 
+vi /var/lib/mysql/grastate.dat
+safe_to_bootstrap: 0 # 设置为0
+service start mysql
+```
+
+#### 冷备份的实际用途
+
+利用冷备份的备份文档，还原到新上线的PXC节点，让节点具有初始数据，避免上线后出现全量同步
+
+可以定期执行冷备份
 
 ## 5. XtraBackup热备份原理
 
@@ -1068,5 +1186,4 @@ pritition by range(province_id) subpartition by key(name) subpartitions 4(
 
 # 备注
 
-Typora
-
+Typora 工具很方便编辑MD格式的文件
