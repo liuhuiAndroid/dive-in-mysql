@@ -1164,9 +1164,183 @@ service start mysql
 
 ## 5. XtraBackup热备份原理
 
+#### 热备份
+
+热备份是在数据库运行的状态下备份数据，也是难度最大的备份
+
+PXC常见的热备份有LVM和XtraBackup两种方案
+
+建议使用XtraBackup热备MySQL
+
+#### XtraBackup优势
+
+XtraBackup备份过程加读锁，数据可读，但是不可写
+
+XtraBackup备份过程不会打断正在执行的事务
+
+XtraBackup能够基于压缩等功能节约磁盘空间
+
+#### 全量备份和增量备份
+
+全量备份是备份全部数据。备份过程时间很长，占用空间大
+
+增量备份是只备份变化的那部分数据。备份时间短，占用空间小
+
+#### XtraBackup原理
+
+XtraBackup是一种物理备份工具，通过协议连接到MySQL服务端，然后读取并复制底层的文件，完成物理备份
+
+XtraBackup支持对InnoDB引擎做全量备份和增量备份
+
+XtraBackup只能对MyISAM引擎做全量备份
+
+#### 在线安装XtraBackup
+
+```shell
+yum install http://www.percona.com/downloads/percona-release/redhat/0.1-4/percona-release-0.1-4.noarch.rpm
+yum install percona-xtrabackup-24
+xtrabackup
+```
+
 ## 6. 全量热备份-常见命令
 
+#### XtraBackup命令种类
+
+xbcrypt			用于加密或解密备份的数据
+
+xbstream		用于压缩或者解压缩xbstream文件
+
+xtrabackup		备份InnoDB数据表
+
+innobackupex	是上面三种命令的perl脚本封装
+
+#### 全量热备份命令
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 /home/backup # 不推荐远程备份
+
+cd /home/backup
+ls # 查看备份文件
+```
+
+#### 流式压缩备份的必要性
+
+#### 使用流式压缩备份
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --no-timestamp --stream=xbstream -> /home/backup.xbstream
+```
+
+#### 使用加密备份
+
+encrypt				用于加密的算法：AES128、AES192、AES256
+
+encrypt-threads		执行加密的线程数
+
+encrypt-chunk-size	加密线程的缓存大小
+
+encrypt-key			密钥字符
+
+encryption-key-file	密钥文件
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --encrypt=AES256 --encrypt-threads=10 --encrypt-key=... --encrypt-chunk-size 512 --no-timestamp --stream=xbstream -> /home/backup.xbstream 
+```
+
+#### 其他参数
+
+compress			压缩InnoDB数据文件
+
+compress-threads	执行压缩的线程数
+
+compress-chunk-size	压缩线程的缓存
+
+include				需要备份的数据表的正则表达式
+
+galera-info			备份PXC节点状态文件
+
+```shell
+innobackupex ... --compress --compress-threads=10 --include=test.t_key_1,test.t_key_2 --galera-info ...
+```
+
 ## 7. 全量热备份-编写shell脚本
+
+#### Linux系统定时执行任务
+
+Linux通过crontab命令，可以在固定的间隔时间执行指定的系统指令或shell脚本
+
+#### Linux系统的Cron表达式语法
+
+\* 		代表所有可能的值
+
+,		定义枚举值
+
+\-		定义范围
+
+/		定义频率
+
+[在线编写 cron 表达式](https://tool.lu/crontab)
+
+#### Crontab介绍
+
+Crontab命令被用来提交和管理用户的需要周期性执行的任务
+
+Linux会自动启动Crontab进程，Crontab会每分钟定期检查是否有要执行的任务，如果有，则自动执行
+
+```shell
+service crontab start 
+service crontab stop 
+service crontab restart 
+```
+
+#### Crontab任务分类
+
+Linux系统中任务调度分为系统调度和用户调度
+
+系统调度：/etc/crontab
+
+用户调度：/var/spool/cron/crontab
+
+#### CronTab命令
+
+```shell
+crontab 参数
+-l	打印用户任务列表
+-r	删除用户任务列表
+-e	编辑用户任务列表
+```
+
+```shell
+crontab -e 
+*/1 * * * * echo "HelloWorld" >> /home/demo.log
+```
+
+#### 编写shell脚本
+
+```shell
+mkdir shell 
+touch shell/demo1.sh
+vi shell/demo1.sh
+```
+
+```shell
+time=$(date "+%Y-%m-%d %H:%M:%S")
+echo "执行全量热备份 ${time}"
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --encrypt=AES256 --encrypt-threads=10 --encrypt-key=... --encrypt-chunk-size 512 --no-timestamp --stream=xbstream -> /home/backup.xbstream 
+```
+
+```shell
+chmod -R 777 shell/demo1.sh
+./demo1.sh
+```
+
+#### 编写定时全量热备份脚本
+
+```shell
+crontab -e 
+0 0 * * 1 /home/shell/demo1.sh > /home/log/demo1.log 2>&1 # 每周一凌晨执行全量热备份，输出正常日志和异常日志
+# */1 * * * * 每隔一分钟执行
+```
 
 ## 8. 全量冷恢复
 
@@ -1187,3 +1361,5 @@ service start mysql
 # 备注
 
 Typora 工具很方便编辑MD格式的文件
+
+FileZilla FTP软件
