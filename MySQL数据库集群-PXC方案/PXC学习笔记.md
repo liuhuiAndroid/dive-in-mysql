@@ -1448,7 +1448,87 @@ Java语言的Cron表达式有两种实现：Quartz和Spring
 
 ## 10. 增量热备份-Cron表达式语法
 
+#### Java语言Cron表达式语法
+
+秒 分钟 小时 日期 月份 星期 年份
+
+在日期列中可以使用L表示最后一天，W表示最近的工作日
+
+在星期列中可以使用L表示最后一周吗，#表示第几周
+
+#### 安装Maven
+
+[下载maven](http://maven.apache.org/download.cgi)
+
+[apache-maven-3.6.0-bin.zip](http://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip)
+
+环境变量配置maven/bin目录到path中
+
+可以把中央仓库配置成阿里云的maven仓库
+
+setting文件中可以修改下载的路径
+
+#### 设置开启定时任务
+
+```java
+@EnableScheduling #注解加载Application启动类上
+```
+
+#### 编写定时程序
+
+```java
+@Component
+public class TestTask{
+    // 每秒执行一次
+    @Scheduled(cron="*/1 * * * * *")
+    public void sayHello(){
+        System.out.println("HelloWorld");
+    }
+}
+```
+
 ## 11. java程序定时增量热备份数据库
+
+```shell
+# 保存初始的目录地址
+vi /home/backup/config.txt
+/home/backup/2018-09-12_21-27-50
+```
+
+#### 编写定时程序
+
+```java
+@Component
+public class BackupTask{
+    // 每分钟执行一次
+    @Scheduled(cron="0 */1 * * * *")
+    public void backup(){
+        Date date = new Date();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+        String folderName = dateFormat.format(date);
+        FileReader fr = new FileReader("/home/backup/config.txt");
+        BufferedReader bfr = new BufferReader(fr);
+        String basedir = bfr.readLine();
+        bfr.close();
+        fr.close();
+        String shell = "innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --no-timestamp --port=3306 --incremental-basedir=" + basedir + " --incremental /home/backup/increment/java/" + folderName;
+        Runtime.getRuntime.exec(shell);
+        FileWriter fw = new FileWriter("/home/backup/config.txt");
+        BufferedWriter bfw = new BufferedWriter(fw);
+        bfw.write("/home/backup/increment/java/"+folderName);
+        bfw.close();
+        fw.close();
+    }
+}
+```
+
+打包成schedule.jar，在Linux上执行
+
+```shell
+nohup java -jar schedule.jar
+```
+
+
 
 ## 12. 增量冷还原
 
