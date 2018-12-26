@@ -1344,7 +1344,107 @@ crontab -e
 
 ## 8. 全量冷恢复
 
+#### 冷还原前的准备工作
+
+关闭MySQL，清空数据目录，包括表分区的目录
+
+```shell
+service stop mysql
+# 清空数据目录
+rm -rf /var/lib/mysql/*
+# 清空表分区的目录
+rm -rf /home/p0/data/*
+rm -rf /home/p1/data/*
+rm -rf /home/p2/data/*
+rm -rf /home/p3/data/*
+rm -rf /mnt/p0/data/*
+rm -rf /mnt/p1/data/*
+```
+
+回滚没有提交的事务，同步已经提交的事务到数据文件
+
+```shell
+# 清理事务日志
+innobackupex --apply-log /home/backup/2018-09-12_10-53-51
+```
+
+#### 执行全量冷还原
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --copy-back /home/backup/2018-09-12_10-53-51
+# 分配用户和用户组
+chown -R mysql:mysql /var/lib/mysql/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /mnt/p0/data/*
+chown -R mysql:mysql /mnt/p1/data/*
+# 启动数据库
+systemctl start mysql@bootstrap.service
+```
+
+#### 流式备份文档冷还原
+
+```shell
+# 清空数据目录
+rm -rf /var/lib/mysql/*
+# 清空表分区的目录
+rm -rf /home/p0/data/*
+rm -rf /home/p1/data/*
+rm -rf /home/p2/data/*
+rm -rf /home/p3/data/*
+rm -rf /mnt/p0/data/*
+rm -rf /mnt/p1/data/*
+
+mkdir /home/temp
+# 解压缩
+xbstream -x < /home/backup.xbstream -C /home/temp
+# 解密
+innobackupex --decompress --decrypt=AES256 --encrypt-key=... /home/temp
+# 文件还原
+innobackupex --defaults-file=/etc/my.cnf --copy-back /home/temp
+
+# 分配用户和用户组
+chown -R mysql:mysql /var/lib/mysql/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /mnt/p0/data/*
+chown -R mysql:mysql /mnt/p1/data/*
+
+# 启动数据库
+systemctl start mysql@bootstrap.service
+```
+
 ## 9. 增量热备份-注意事项
+
+#### 增量热备份的注意事项
+
+无论全量热备份使用了流式压缩，还是内容加密，都必须解密解压缩成普通全量热备份
+
+增量热备份可以使用流式压缩或者内容加密
+
+```shell
+# 增量热备份命令
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --incremental-basedir=/home/backup/2018-09-12_21-27-50 --incremental /home/backup/increment
+# 查看文件体积
+du -sh *
+```
+
+可以在第一次增量热备份的基础上再进行增量热备份
+
+```shell
+# 增量热备份使用流式压缩和加密
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --incremental-basedir=/home/backup/2018-09-12_21-27-50 --incremental --compress --compress-threads=10 --encrypt=AES256 --encrypt-threads=10 --encrypt-key=... --stream=xbstream ./ > /home/backup/increment
+```
+
+####  利用Java程序定时增量备份
+
+Java语言的Cron表达式精确到秒，这一点与Linux的Cron表达式不同
+
+Java语言的Cron表达式有两种实现：Quartz和Spring
 
 ## 10. 增量热备份-Cron表达式语法
 
