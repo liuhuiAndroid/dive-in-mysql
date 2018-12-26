@@ -1528,15 +1528,156 @@ public class BackupTask{
 nohup java -jar schedule.jar
 ```
 
-
-
 ## 12. 增量冷还原
+
+#### 选择增量备份点
+
+#### 处理事务日志
+
+```shell
+# 处理全量备份事务日志
+innobackupex --apply-log --redo-only /home/backup/2018-09-12_10-53-51
+# 处理增量备份事务日志
+innobackupex --apply-log --redo-only /home/backup/2018-09-12_10-53-51 --incremental-dir=/home/backup/increment/2018-09-12_13-53-51
+innobackupex --apply-log --redo-only /home/backup/2018-09-12_10-53-51 --incremental-dir=/home/backup/increment/2018-09-12_14-53-51
+```
+
+#### 关闭数据库并删除数据目录
+
+```shell
+systemctl stop mysql@bootstrap.service
+# 清空数据目录
+rm -rf /var/lib/mysql/*
+# 清空表分区的目录
+rm -rf /home/p0/data/*
+rm -rf /home/p1/data/*
+rm -rf /home/p2/data/*
+rm -rf /home/p3/data/*
+rm -rf /mnt/p0/data/*
+rm -rf /mnt/p1/data/*
+
+# 执行还原
+innobackupex --defaults-file=/etc/my.cnf --copy-back /home/backup/2018-09-12_10-53-51
+
+# 分配用户和用户组
+chown -R mysql:mysql /var/lib/mysql/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /mnt/p0/data/*
+chown -R mysql:mysql /mnt/p1/data/*
+
+# 启动数据库
+systemctl start mysql@bootstrap.service
+```
 
 ## 13. 误操作恢复_延时节点解决方案
 
+#### SQL管理系统
+
+#### 利用延时同步防止误删除操作
+
+挑一个PXC节点作为Master节点，和另一个Slave节点组成Replication集群，形成主从同步，Slave节点作延时同步
+
+#### 设置主从同步
+
+1. 主节点必须开启binlog日志，主从节点都要开启server_id
+
+2. 主节点的同步账号必须据用reload、super、replication slave权限
+
+3. 从节点必须开启relay_log日志
+
+   ```mysql
+   relay_log=relay_bin
+   ```
+
+```shell
+# 从节点
+service mysql start 
+
+# 正常从节点
+stop slave;
+change master to master_host="192.168.99.151",master_port=3306,master_user="admin",master_password="Abc_123456";
+start slave;
+show slave status;
+
+# 设置为延时节点
+stop slave;
+change master to master_delay=600; # 10分钟
+start slave;
+show slave status;
+```
+
+主从节点的配置文件都要开启GTID，否则无法利用延时节点找回数据
+
+```mysql
+gtid_mode=ON
+enforce_gtid_consistency=1
+```
+
 ## 14. 误操作恢复_恢复主节点误删除故障
 
+1. 停止PXC集群的业务操作，不要让业务系统读写数据库
+
+2. 导出从节点的数据，在主节点上创建临时库，导入数据
+
+3. 把主节点上业务表重命名，然后把临时库的业务表迁移到业务库
+
+   ```mysql
+   rename table db.student to db.student_1;
+   rename table temp.student to db.student;
+   ```
+
 ## 15. 误操作恢复_日志闪回方案
+
+#### 日志闪回方案的优点
+
+主从延时同步，一旦延时阶段没有发现问题、解决问题，数据同步之后，将无法利用从节点实现误删除回复
+
+日志闪回方案只利用当前节点恢复数据，简单易操作
+
+#### 日志闪回的原理
+
+#### 安装闪回工具
+
+binlog2sql是大众点评的基于Python的MySQL闪回工具
+
+```shell
+# 具体见github文档
+yum install -y git
+cd /home
+git clone https://github.com/danfengcao/binlog2sql.git 
+cd binlog2sql
+yum install -y epel-release
+yum install -y python-pip
+pip install -r requirements.txt
+```
+
+#### 制造误删除数据
+
+#### 闪回前的准备工作
+
+1. 停止数据库的写操作，避免还原后覆盖新写入的数据
+2. 热备份数据库，以保证还原工作万无一失
+3. 清空需要恢复数据的业务表的全部记录，避免写入冲突
+
+```mysql
+# 查看日志文件
+show master logs;
+```
+
+#### binlog2sql执行闪回操作
+
+```shell
+cd binlog2sql
+python binlog2sql.py -uadmin -p'Abc_123456' -dflash -t student --start-file='localhost-bin.000010' > /home/flash1.sql
+python binlog2sql.py -uadmin -p'Abc_123456' -dflash -t student --start-file='localhost-bin.000011' > /home/flash2.sql
+
+cat /home/flash1.sql
+cat /home/flash2.sql
+# 可以下载下来查看sql
+```
 
 # 备注
 
