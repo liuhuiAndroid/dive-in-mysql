@@ -1040,33 +1040,647 @@ pritition by range(province_id) subpartition by key(name) subpartitions 4(
 
 ## 2. 联机冷备份-数据表碎片整理
 
+```mysql
+cd /var/lib/mysql
+ls
+cd test 
+ls 
+```
+
+#### auto.cnf文件
+
+每个MySQL都有唯一的UUID，这个值被保存到了auto.cnf文件
+
+数据还原的时候，注意auto.cnf文件
+
+#### grastate.dat文件
+
+grastate.dat文件里保存的是PXC的同步信息
+
+#### gvwstate.dat文件
+
+gvwstate.dat文件里保存的是PXC集群节点的信息
+
+#### 其他文件
+
+err				错误日志文件
+
+pid				进程id文件
+
+ib_buffer_pool	InnoDB缓存文件
+
+ib_logfile		InnoDB事务文件
+
+ibdata			InnoDB共享表空间文件
+
+logbin			日志文件
+
+index			日志索引文件
+
+ibtmp			临时表空间文件
+
+#### 数据文件中的碎片是什么？
+
+向数据表写入数据，数据文件的体积会增大，但是删除数据的时候数据文件体积并不会减小，数据被删除后留下的空白，被称作碎片
+
+数据备份前需要执行碎片整理
+
+#### 整理碎片文件
+
+```mysql
+alter table student engine=InnoDB; # 整理碎片，会锁表
+```
+
+```shell
+vi /etc/my.cnf # 防止碎片整理记录到日志，导致整个集群都进行碎片整理
+#log_bin
+#log_slave_updates
+```
+
 ## 3. 联机冷备份-冷备份PXC节点
+
+```shell
+systemctl stop mysql@bootstrap.service
+vi /etc/my.cnf
+#log_bin
+#log_slave_updates
+#wsrep_... 同步参数也注释掉
+service start mysql
+# 执行碎片整理的Java程序
+service stop mysql # 冷备份需要停止数据库
+```
+
+```shell
+# 冷备份数据目录
+tar -cvf mysql.tar /var/lib/mysql
+# 冷备份表分区
+tar -cvf p0.tar /mnt/p0/data
+tar -cvf p1.tar /mnt/p1/data
+...
+```
+
+#### 冷备份后，节点上线
+
+恢复my.cnf文件中，有关binlog日志，以及PXC同步的相关配置
+
+重新启动PXC节点，加入到PXC集群中
+
+```shell
+vi /etc/my.cnf
+systemctl start mysql@bootstrap.service
+```
 
 ## 4. 联机冷备份-冷还原
 
+#### 还原前的准备工作
+
+如果备份节点存在表分区，那么还原节点必须创建相同的表分区存储空间，并删除MySQL数据目录
+
+停止MySQL服务
+
+```shell
+rm -rf /var/lib/mysql
+```
+
+#### 执行还原
+
+```shell
+tar -xvf mysql.tar
+mv -f var/lib/mysql /var/lib
+rm -rf var
+...
+
+rm /var/lib/mysql/auto.cnf # 删除 mysql uuid 
+vi /var/lib/mysql/grastate.dat
+safe_to_bootstrap: 0 # 设置为0
+service start mysql
+```
+
+#### 冷备份的实际用途
+
+利用冷备份的备份文档，还原到新上线的PXC节点，让节点具有初始数据，避免上线后出现全量同步
+
+可以定期执行冷备份
+
 ## 5. XtraBackup热备份原理
+
+#### 热备份
+
+热备份是在数据库运行的状态下备份数据，也是难度最大的备份
+
+PXC常见的热备份有LVM和XtraBackup两种方案
+
+建议使用XtraBackup热备MySQL
+
+#### XtraBackup优势
+
+XtraBackup备份过程加读锁，数据可读，但是不可写
+
+XtraBackup备份过程不会打断正在执行的事务
+
+XtraBackup能够基于压缩等功能节约磁盘空间
+
+#### 全量备份和增量备份
+
+全量备份是备份全部数据。备份过程时间很长，占用空间大
+
+增量备份是只备份变化的那部分数据。备份时间短，占用空间小
+
+#### XtraBackup原理
+
+XtraBackup是一种物理备份工具，通过协议连接到MySQL服务端，然后读取并复制底层的文件，完成物理备份
+
+XtraBackup支持对InnoDB引擎做全量备份和增量备份
+
+XtraBackup只能对MyISAM引擎做全量备份
+
+#### 在线安装XtraBackup
+
+```shell
+yum install http://www.percona.com/downloads/percona-release/redhat/0.1-4/percona-release-0.1-4.noarch.rpm
+yum install percona-xtrabackup-24
+xtrabackup
+```
 
 ## 6. 全量热备份-常见命令
 
+#### XtraBackup命令种类
+
+xbcrypt			用于加密或解密备份的数据
+
+xbstream		用于压缩或者解压缩xbstream文件
+
+xtrabackup		备份InnoDB数据表
+
+innobackupex	是上面三种命令的perl脚本封装
+
+#### 全量热备份命令
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 /home/backup # 不推荐远程备份
+
+cd /home/backup
+ls # 查看备份文件
+```
+
+#### 流式压缩备份的必要性
+
+#### 使用流式压缩备份
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --no-timestamp --stream=xbstream -> /home/backup.xbstream
+```
+
+#### 使用加密备份
+
+encrypt				用于加密的算法：AES128、AES192、AES256
+
+encrypt-threads		执行加密的线程数
+
+encrypt-chunk-size	加密线程的缓存大小
+
+encrypt-key			密钥字符
+
+encryption-key-file	密钥文件
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --encrypt=AES256 --encrypt-threads=10 --encrypt-key=... --encrypt-chunk-size 512 --no-timestamp --stream=xbstream -> /home/backup.xbstream 
+```
+
+#### 其他参数
+
+compress			压缩InnoDB数据文件
+
+compress-threads	执行压缩的线程数
+
+compress-chunk-size	压缩线程的缓存
+
+include				需要备份的数据表的正则表达式
+
+galera-info			备份PXC节点状态文件
+
+```shell
+innobackupex ... --compress --compress-threads=10 --include=test.t_key_1,test.t_key_2 --galera-info ...
+```
+
 ## 7. 全量热备份-编写shell脚本
+
+#### Linux系统定时执行任务
+
+Linux通过crontab命令，可以在固定的间隔时间执行指定的系统指令或shell脚本
+
+#### Linux系统的Cron表达式语法
+
+\* 		代表所有可能的值
+
+,		定义枚举值
+
+\-		定义范围
+
+/		定义频率
+
+[在线编写 cron 表达式](https://tool.lu/crontab)
+
+#### Crontab介绍
+
+Crontab命令被用来提交和管理用户的需要周期性执行的任务
+
+Linux会自动启动Crontab进程，Crontab会每分钟定期检查是否有要执行的任务，如果有，则自动执行
+
+```shell
+service crontab start 
+service crontab stop 
+service crontab restart 
+```
+
+#### Crontab任务分类
+
+Linux系统中任务调度分为系统调度和用户调度
+
+系统调度：/etc/crontab
+
+用户调度：/var/spool/cron/crontab
+
+#### CronTab命令
+
+```shell
+crontab 参数
+-l	打印用户任务列表
+-r	删除用户任务列表
+-e	编辑用户任务列表
+```
+
+```shell
+crontab -e 
+*/1 * * * * echo "HelloWorld" >> /home/demo.log
+```
+
+#### 编写shell脚本
+
+```shell
+mkdir shell 
+touch shell/demo1.sh
+vi shell/demo1.sh
+```
+
+```shell
+time=$(date "+%Y-%m-%d %H:%M:%S")
+echo "执行全量热备份 ${time}"
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --encrypt=AES256 --encrypt-threads=10 --encrypt-key=... --encrypt-chunk-size 512 --no-timestamp --stream=xbstream -> /home/backup.xbstream 
+```
+
+```shell
+chmod -R 777 shell/demo1.sh
+./demo1.sh
+```
+
+#### 编写定时全量热备份脚本
+
+```shell
+crontab -e 
+0 0 * * 1 /home/shell/demo1.sh > /home/log/demo1.log 2>&1 # 每周一凌晨执行全量热备份，输出正常日志和异常日志
+# */1 * * * * 每隔一分钟执行
+```
 
 ## 8. 全量冷恢复
 
+#### 冷还原前的准备工作
+
+关闭MySQL，清空数据目录，包括表分区的目录
+
+```shell
+service stop mysql
+# 清空数据目录
+rm -rf /var/lib/mysql/*
+# 清空表分区的目录
+rm -rf /home/p0/data/*
+rm -rf /home/p1/data/*
+rm -rf /home/p2/data/*
+rm -rf /home/p3/data/*
+rm -rf /mnt/p0/data/*
+rm -rf /mnt/p1/data/*
+```
+
+回滚没有提交的事务，同步已经提交的事务到数据文件
+
+```shell
+# 清理事务日志
+innobackupex --apply-log /home/backup/2018-09-12_10-53-51
+```
+
+#### 执行全量冷还原
+
+```shell
+innobackupex --defaults-file=/etc/my.cnf --copy-back /home/backup/2018-09-12_10-53-51
+# 分配用户和用户组
+chown -R mysql:mysql /var/lib/mysql/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /mnt/p0/data/*
+chown -R mysql:mysql /mnt/p1/data/*
+# 启动数据库
+systemctl start mysql@bootstrap.service
+```
+
+#### 流式备份文档冷还原
+
+```shell
+# 清空数据目录
+rm -rf /var/lib/mysql/*
+# 清空表分区的目录
+rm -rf /home/p0/data/*
+rm -rf /home/p1/data/*
+rm -rf /home/p2/data/*
+rm -rf /home/p3/data/*
+rm -rf /mnt/p0/data/*
+rm -rf /mnt/p1/data/*
+
+mkdir /home/temp
+# 解压缩
+xbstream -x < /home/backup.xbstream -C /home/temp
+# 解密
+innobackupex --decompress --decrypt=AES256 --encrypt-key=... /home/temp
+# 文件还原
+innobackupex --defaults-file=/etc/my.cnf --copy-back /home/temp
+
+# 分配用户和用户组
+chown -R mysql:mysql /var/lib/mysql/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /mnt/p0/data/*
+chown -R mysql:mysql /mnt/p1/data/*
+
+# 启动数据库
+systemctl start mysql@bootstrap.service
+```
+
 ## 9. 增量热备份-注意事项
+
+#### 增量热备份的注意事项
+
+无论全量热备份使用了流式压缩，还是内容加密，都必须解密解压缩成普通全量热备份
+
+增量热备份可以使用流式压缩或者内容加密
+
+```shell
+# 增量热备份命令
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --incremental-basedir=/home/backup/2018-09-12_21-27-50 --incremental /home/backup/increment
+# 查看文件体积
+du -sh *
+```
+
+可以在第一次增量热备份的基础上再进行增量热备份
+
+```shell
+# 增量热备份使用流式压缩和加密
+innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --port=3306 --incremental-basedir=/home/backup/2018-09-12_21-27-50 --incremental --compress --compress-threads=10 --encrypt=AES256 --encrypt-threads=10 --encrypt-key=... --stream=xbstream ./ > /home/backup/increment
+```
+
+####  利用Java程序定时增量备份
+
+Java语言的Cron表达式精确到秒，这一点与Linux的Cron表达式不同
+
+Java语言的Cron表达式有两种实现：Quartz和Spring
 
 ## 10. 增量热备份-Cron表达式语法
 
+#### Java语言Cron表达式语法
+
+秒 分钟 小时 日期 月份 星期 年份
+
+在日期列中可以使用L表示最后一天，W表示最近的工作日
+
+在星期列中可以使用L表示最后一周吗，#表示第几周
+
+#### 安装Maven
+
+[下载maven](http://maven.apache.org/download.cgi)
+
+[apache-maven-3.6.0-bin.zip](http://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.zip)
+
+环境变量配置maven/bin目录到path中
+
+可以把中央仓库配置成阿里云的maven仓库
+
+setting文件中可以修改下载的路径
+
+#### 设置开启定时任务
+
+```java
+@EnableScheduling #注解加载Application启动类上
+```
+
+#### 编写定时程序
+
+```java
+@Component
+public class TestTask{
+    // 每秒执行一次
+    @Scheduled(cron="*/1 * * * * *")
+    public void sayHello(){
+        System.out.println("HelloWorld");
+    }
+}
+```
+
 ## 11. java程序定时增量热备份数据库
+
+```shell
+# 保存初始的目录地址
+vi /home/backup/config.txt
+/home/backup/2018-09-12_21-27-50
+```
+
+#### 编写定时程序
+
+```java
+@Component
+public class BackupTask{
+    // 每分钟执行一次
+    @Scheduled(cron="0 */1 * * * *")
+    public void backup(){
+        Date date = new Date();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+        String folderName = dateFormat.format(date);
+        FileReader fr = new FileReader("/home/backup/config.txt");
+        BufferedReader bfr = new BufferReader(fr);
+        String basedir = bfr.readLine();
+        bfr.close();
+        fr.close();
+        String shell = "innobackupex --defaults-file=/etc/my.cnf --host=192.168.99.151 --user=admin --password=Abc_123456 --no-timestamp --port=3306 --incremental-basedir=" + basedir + " --incremental /home/backup/increment/java/" + folderName;
+        Runtime.getRuntime.exec(shell);
+        FileWriter fw = new FileWriter("/home/backup/config.txt");
+        BufferedWriter bfw = new BufferedWriter(fw);
+        bfw.write("/home/backup/increment/java/"+folderName);
+        bfw.close();
+        fw.close();
+    }
+}
+```
+
+打包成schedule.jar，在Linux上执行
+
+```shell
+nohup java -jar schedule.jar
+```
 
 ## 12. 增量冷还原
 
+#### 选择增量备份点
+
+#### 处理事务日志
+
+```shell
+# 处理全量备份事务日志
+innobackupex --apply-log --redo-only /home/backup/2018-09-12_10-53-51
+# 处理增量备份事务日志
+innobackupex --apply-log --redo-only /home/backup/2018-09-12_10-53-51 --incremental-dir=/home/backup/increment/2018-09-12_13-53-51
+innobackupex --apply-log --redo-only /home/backup/2018-09-12_10-53-51 --incremental-dir=/home/backup/increment/2018-09-12_14-53-51
+```
+
+#### 关闭数据库并删除数据目录
+
+```shell
+systemctl stop mysql@bootstrap.service
+# 清空数据目录
+rm -rf /var/lib/mysql/*
+# 清空表分区的目录
+rm -rf /home/p0/data/*
+rm -rf /home/p1/data/*
+rm -rf /home/p2/data/*
+rm -rf /home/p3/data/*
+rm -rf /mnt/p0/data/*
+rm -rf /mnt/p1/data/*
+
+# 执行还原
+innobackupex --defaults-file=/etc/my.cnf --copy-back /home/backup/2018-09-12_10-53-51
+
+# 分配用户和用户组
+chown -R mysql:mysql /var/lib/mysql/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /home/p0/data/*
+chown -R mysql:mysql /mnt/p0/data/*
+chown -R mysql:mysql /mnt/p1/data/*
+
+# 启动数据库
+systemctl start mysql@bootstrap.service
+```
+
 ## 13. 误操作恢复_延时节点解决方案
+
+#### SQL管理系统
+
+#### 利用延时同步防止误删除操作
+
+挑一个PXC节点作为Master节点，和另一个Slave节点组成Replication集群，形成主从同步，Slave节点作延时同步
+
+#### 设置主从同步
+
+1. 主节点必须开启binlog日志，主从节点都要开启server_id
+
+2. 主节点的同步账号必须据用reload、super、replication slave权限
+
+3. 从节点必须开启relay_log日志
+
+   ```mysql
+   relay_log=relay_bin
+   ```
+
+```shell
+# 从节点
+service mysql start 
+
+# 正常从节点
+stop slave;
+change master to master_host="192.168.99.151",master_port=3306,master_user="admin",master_password="Abc_123456";
+start slave;
+show slave status;
+
+# 设置为延时节点
+stop slave;
+change master to master_delay=600; # 10分钟
+start slave;
+show slave status;
+```
+
+主从节点的配置文件都要开启GTID，否则无法利用延时节点找回数据
+
+```mysql
+gtid_mode=ON
+enforce_gtid_consistency=1
+```
 
 ## 14. 误操作恢复_恢复主节点误删除故障
 
+1. 停止PXC集群的业务操作，不要让业务系统读写数据库
+
+2. 导出从节点的数据，在主节点上创建临时库，导入数据
+
+3. 把主节点上业务表重命名，然后把临时库的业务表迁移到业务库
+
+   ```mysql
+   rename table db.student to db.student_1;
+   rename table temp.student to db.student;
+   ```
+
 ## 15. 误操作恢复_日志闪回方案
+
+#### 日志闪回方案的优点
+
+主从延时同步，一旦延时阶段没有发现问题、解决问题，数据同步之后，将无法利用从节点实现误删除回复
+
+日志闪回方案只利用当前节点恢复数据，简单易操作
+
+#### 日志闪回的原理
+
+#### 安装闪回工具
+
+binlog2sql是大众点评的基于Python的MySQL闪回工具
+
+```shell
+# 具体见github文档
+yum install -y git
+cd /home
+git clone https://github.com/danfengcao/binlog2sql.git 
+cd binlog2sql
+yum install -y epel-release
+yum install -y python-pip
+pip install -r requirements.txt
+```
+
+#### 制造误删除数据
+
+#### 闪回前的准备工作
+
+1. 停止数据库的写操作，避免还原后覆盖新写入的数据
+2. 热备份数据库，以保证还原工作万无一失
+3. 清空需要恢复数据的业务表的全部记录，避免写入冲突
+
+```mysql
+# 查看日志文件
+show master logs;
+```
+
+#### binlog2sql执行闪回操作
+
+```shell
+cd binlog2sql
+python binlog2sql.py -uadmin -p'Abc_123456' -dflash -t student --start-file='localhost-bin.000010' > /home/flash1.sql
+python binlog2sql.py -uadmin -p'Abc_123456' -dflash -t student --start-file='localhost-bin.000011' > /home/flash2.sql
+
+cat /home/flash1.sql
+cat /home/flash2.sql
+# 可以下载下来查看sql
+```
 
 # 备注
 
-Typora
+Typora 工具很方便编辑MD格式的文件
 
+FileZilla FTP软件
