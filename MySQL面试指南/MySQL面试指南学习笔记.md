@@ -114,3 +114,108 @@
 | 新增Innodb_dedicated_server配置项 |
 
 问题3：最新的MySQL版本是什么？它有什么特性比较吸引你？
+
+# 第3章 用户管理类问题
+
+## 1.用户管理常见问题
+
+问题1：如何在给定场景下为某用户授权？
+
+问题2：如何保证数据库账号的安全？
+
+问题3：如何从一个实例迁移数据库账号到另一个实例？
+
+## 2.给定场景下对用户授权
+
+#### 知识点
+
+* 如何定义MySQL数据库账号？
+
+  用户名@可访问控制列表
+
+  可访问控制列表：
+
+   	1. %：代表可以从所有外部主机访问（默认）
+   	2. 192.168.1.%：表示可以从192.168.1网段访问
+   	3. localhost：DB服务器本地访问
+
+  使用CREATE USER命令建立用户
+
+* MySQL常用的用户权限
+
+  1. Admin权限
+     1. Create User 建立新的用户的权限
+     2. Grant option 为其他用户授权的权限
+     3. Super 管理服务器的权限
+  2. DDL权限
+     1. Create 新建数据库，表的权限
+     2. Alter 修改表结构的权限
+     3. Drop 删除数据库和表的权限
+     4. Index 建立和删除索引的权限
+  3. DML权限
+     1. Select 查询表中数据的权限
+     2. Insert 向表中插入数据的权限
+     3. Update 更新表中数据的权限
+     4. Delete 删除表中数据的权限
+     5. Execute 执行存储过程的权限
+
+* 如何为用户授权？
+
+  * 遵循最小权限原则
+  * 使用Grant命令对用户授权
+
+  ```mysql
+  show privileg; # 获取当前数据库所支持的数据库权限列表
+  
+  grant select,insert,update,delete on db.tb to user@ip; # 授权
+  revoke delete on db.tb from user@ip; # 收回权限
+  ```
+
+## 3.保证数据库账号安全
+
+#### 知识点
+
+* 数据库用户管理流程规范
+
+  * 最小权限原则
+
+  * 密码强度策略
+
+  * 密码过期原则
+
+  * 限制历史密码重用原则
+
+    ```mysql
+    # mysql 8.0 密码过期原则 和 限制历史密码重用原则
+    \h create user # 查看语法
+    create user test@'localhost' identified by '123#qwe' password history 1; # 在设置新密码的时候不能和之前的密码相同
+    select * from mysql.user where user='test';
+        mysql -utest -p # （新连接）登录
+        show databases; # （新连接）没有权限 看不到任务数据库
+    alter user test@'localhost' password expire; # 设置密码过期
+        mysql -utest -p # （新连接）登录
+        show databases; # （新连接）提示需要重新设置密码
+    	alter user user() identified by '123#qwe';  #（新连接）提示不能使用重复密码
+    	alter user user() identified by '123#qwe*'; #（新连接）重置成功
+    ```
+
+* 密码管理策略
+
+## 4.迁移数据库账号
+
+#### 解决思路
+
+数据库版本是否一致？
+
+​	如果一致，则备份mysql库，然后在目的实例恢复
+
+​	如果不一致，导出授权语句，在目的实例执行
+
+#### 导出用户建立及授权语句
+
+```mysql
+pt-show-grants u=root,p=123456,h=localhost # Percona 的工具
+```
+
+
+
